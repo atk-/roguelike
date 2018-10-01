@@ -1,5 +1,6 @@
 import pytest
-from ..utils import Point as P, distance, cross, distance_from_line
+from ..utils import Point as P, distance, cross, distance_from_line, \
+    tiles_on_route
 import math
 
 
@@ -37,3 +38,11 @@ def test_distance_from_line():
     distance_from_line(d1, d2, P(3, 2)) == 0
     distance_from_line(d1, d2, P(5, -1)) == P(3, 2).length
 
+
+def test_tiles_on_route():
+    assert tiles_on_route(P(0, 0), P(3, 0)) == [P(1, 0), P(2, 0), P(3, 0)]
+    assert tiles_on_route(P(1, 2), P(1, -3)) == [P(1, 1), P(1, 0), P(1, -1),
+                                                 P(1, -2), P(1, -3)]
+    assert tiles_on_route(P(1, 0), P(5, 3)) == [P(2, 0), P(2, 1), P(3, 1),
+                                                P(3, 2), P(4, 2), P(4, 3), P(5, 3)]
+    assert tiles_on_route(P(-3, 3), P(0, 0)) == [P(-2, 2), P(-1, 1), P(0, 0)]
