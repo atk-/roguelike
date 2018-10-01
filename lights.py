@@ -259,6 +259,9 @@ class Player(Entity):
             newx = self.x + dx
             newy = self.y + dy
 
+            if not (0 <= newx < self.world.width and 0 <= newy < self.world.height):
+                return
+
             if not self.world.move_obj(self, newy, newx):
                 if self.world[newy, newx].has(Lamp):
                     self.world[newy, newx].get(Lamp).light.lit = False
