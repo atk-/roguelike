@@ -3,7 +3,7 @@ import random
 import math
 from curses import wrapper
 from functools import partial
-from utils import distance, distance_from_line, cross
+from utils import distance, distance_from_line, cross, tiles_on_route
 from utils import Point as P
 
 DIRS = {
@@ -50,19 +50,52 @@ class World:
         self.ambient = 0
         self.populate_world()
 
+    def generate_light_mask(self):
+        if self.ambient:
+            return [[True] * self.width for y in range(self.height)]
+        else:
+            mask = [[None] * self.width for y in range(self.height)]
+            for y in range(self.height):
+                for x in range(self.width):
+                    if mask[y][x] is None:
+                        for light in LightSource.lights:
+                            if distance(light.owner.pos, P(x, y)) <= light.range:
+                                mask[y][x] = True
+                                break
+                        else:
+                            mask[y][x] = False
+            return mask
+
+    def generate_los_mask(self, viewpoint):
+        mask = [[None] * self.width for y in range(self.height)]
+        for y in range(self.height):
+            for x in range(self.width):
+                if mask[y][x] is None:
+                    tiles = tiles_on_route(viewpoint, P(x, y))
+                    while tiles:
+                        tile = tiles.pop(0)
+                        if mask[tile.y][tile.x] == False:
+                            for t in tiles:
+                                mask[t.y][t.x] = False
+                                break
+                        if self[tile.y, tile.x].layers & Layers.OBSTACLE:
+                            mask[tile.y][tile.x] = True
+                            for t in tiles:
+                                mask[t.y][t.x] = False
+                                break
+                        mask[tile.y][tile.x] = True
+        return mask
+
+
     def line_of_sight(self, p_from, p_to):
         xmin, xmax = sorted([p_from.x, p_to.x])
         ymin, ymax = sorted([p_from.y, p_to.y])
         dfunc = partial(distance_from_line, p_from, p_to)
-        tiles = []
-        for y in range(ymin, ymax + 1):
-            for x in range(xmin, xmax + 1):
-                if dfunc(P(x, y)) < 0.5 and not (P(x, y) == p_to):
-                    tiles.append(self[y, x])
+        #tiles = tiles_on_route(p_from, p_to)
 
-        for t in tiles:
-            if t.layers & Layers.OBSTACLE:
-                return False
+        #for t in tiles:
+        #    if self[t.y, t.x].layers & Layers.OBSTACLE:
+        #        return False
 
         return True
 
@@ -83,6 +116,8 @@ class World:
 
     def to_string(self):
         ret = []
+        lightmask = self.generate_light_mask()
+        los_mask = self.generate_los_mask(self.player.pos)
         for i, row in enumerate(self.grid, 2):
             rowstr = ''.join([x.chr if x.is_visible_for(self.player) else ' ' for x in row])
             ret.append(rowstr)
@@ -192,7 +227,7 @@ class Tile:
                 return True
 
     def is_visible_for(self, obj):
-        return self.world.line_of_sight(obj.pos, self.pos)
+        return self.world.line_of_sight(self.pos, obj.pos)
 
     def is_empty(self):
         return self.features == []
