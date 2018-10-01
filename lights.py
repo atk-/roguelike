@@ -3,6 +3,8 @@ import random
 import math
 from curses import wrapper
 from functools import partial
+from utils import distance, distance_from_line, cross
+from utils import Point as P
 
 DIRS = {
     'h': (-1, 0),
@@ -19,9 +21,6 @@ WIDTH = 80
 HEIGHT = 23
 
 STDSCR = None
-
-def distance(x1, y1, x2, y2):
-    return math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1))
 
 
 def msg(message):
@@ -48,47 +47,24 @@ class World:
         self.objects = {}
         self.grid = [[Tile(self, y, x) for x in range(WIDTH)] for y in range(HEIGHT)]
 
-        self.ambient = True
+        self.ambient = 0
         self.populate_world()
 
-    def line_of_sight(self, from_x, from_y, to_x, to_y):
-        def cross(x1, y1, x2, y2):
-            return x1 * y2 - x2 * y1
-        def distance_from_line(p1x, p1y, p2x, p2y, x, y):
-            if p1x == p2x and p1y == p2y:
-                return 0
-            return abs(cross(p2x - p1x, p2y - p1y, p1x - x, p1y - y) / distance(p1x, p1y, p2x, p2y))
-
-        xmin, xmax = sorted([from_x, to_x])
-        ymin, ymax = sorted([from_y, to_y])
-        dfunc = partial(distance_from_line, from_x, from_y, to_x, to_y)
+    def line_of_sight(self, p_from, p_to):
+        xmin, xmax = sorted([p_from.x, p_to.x])
+        ymin, ymax = sorted([p_from.y, p_to.y])
+        dfunc = partial(distance_from_line, p_from, p_to)
         tiles = []
-        for y in range(ymin, ymax+1):
-            for x in range(xmin, xmax+1):
-                if dfunc(x, y) < 0.5 and not (x == to_x and y == to_y):
-                    tiles.append(self.grid[y][x])
+        for y in range(ymin, ymax + 1):
+            for x in range(xmin, xmax + 1):
+                if dfunc(P(x, y)) < 0.5 and not (P(x, y) == p_to):
+                    tiles.append(self[y, x])
 
         for t in tiles:
             if t.layers & Layers.OBSTACLE:
                 return False
 
         return True
-        """
-        if from_x == to_x:
-            ymin, ymax = sorted([from_y, to_y])
-            tiles = [self.grid[y][to_x] for y in range(ymin + 1, ymax)]
-        elif from_y == to_y:
-            xmin, xmax = sorted([from_x, to_x])
-            tiles = [self.grid[to_y][x] for x in range(xmin + 1, xmax)]
-        else:
-            k = (to_y - from_y) / (to_x - from_x)
-            q = -1 / k
-            d = distance(from_x, from_y, to_x, to_y)
-            for s in range(1, 4 * d):
-                s = s / 4.0
-                x = to_x + s
-                y = to_y + k * s
-        """
 
     def populate_world(self):
         for i in range(10):
@@ -129,8 +105,11 @@ class World:
             if not funcs or all([f(tile) for f in funcs]):
                 return tile
 
-    def __getitem__(self, y):
-        return self.grid[y]
+    def __getitem__(self, z):
+        if isinstance(z, int):
+            return self.grid[z]
+        elif isinstance(z, tuple) and len(z) == 2:
+            return self.grid[z[0]][z[1]]
 
     def handle_control(self, key):
         pass
@@ -156,6 +135,10 @@ class Entity:
     @property
     def chr(self):
         return self.feature_char
+
+    @property
+    def pos(self):
+        return P(self.x, self.y)
 
 
 class LightSource:
@@ -209,7 +192,7 @@ class Tile:
                 return True
 
     def is_visible_for(self, obj):
-        return self.world.line_of_sight(obj.x, obj.y, self.x, self.y)
+        return self.world.line_of_sight(obj.pos, self.pos)
 
     def is_empty(self):
         return self.features == []
@@ -224,7 +207,11 @@ class Tile:
         return None
 
     def distance(self, other):
-        return distance(self.x, self.y, other.x, other.y)
+        return distance(self.pos, other.pos)
+
+    @property
+    def pos(self):
+        return P(self.x, self.y)
 
     @property
     def chr(self):
@@ -260,7 +247,7 @@ class Player(Entity):
 
     def __init__(self, world, y=None, x=None):
         super().__init__(world, y, x)
-        self.light = LightSource(self, 1)
+        self.light = LightSource(self, 12)
         self.light.lit = True
         self.world = world
         self.x = x
@@ -273,8 +260,8 @@ class Player(Entity):
             newy = self.y + dy
 
             if not self.world.move_obj(self, newy, newx):
-                if self.world[newy][newx].has(Lamp):
-                    self.world[newy][newx].get(Lamp).light.lit = False
+                if self.world[newy, newx].has(Lamp):
+                    self.world[newy, newx].get(Lamp).light.lit = False
                     msg("Ouch! You wreck the lamp! It gets dark.")
                 else:
                     msg("Ouch!")
