@@ -2,6 +2,7 @@ import curses
 import random
 import math
 from curses import wrapper
+from functools import partial
 
 DIRS = {
     'h': (-1, 0),
@@ -31,9 +32,6 @@ def msg(message):
             STDSCR.addstr(0, 0, ' ' * WIDTH)
         STDSCR.refresh()
 
-def is_empty(tile):
-    return tile.features == []
-
 
 class Layers:
     NONE = 0
@@ -53,7 +51,29 @@ class World:
         self.ambient = True
         self.populate_world()
 
-    def line_of_sight(self, from_y, from_x, to_y, to_x):
+    def line_of_sight(self, from_x, from_y, to_x, to_y):
+        def cross(x1, y1, x2, y2):
+            return x1 * y2 - x2 * y1
+        def distance_from_line(p1x, p1y, p2x, p2y, x, y):
+            if p1x == p2x and p1y == p2y:
+                return 0
+            return abs(cross(p2x - p1x, p2y - p1y, p1x - x, p1y - y) / distance(p1x, p1y, p2x, p2y))
+
+        xmin, xmax = sorted([from_x, to_x])
+        ymin, ymax = sorted([from_y, to_y])
+        dfunc = partial(distance_from_line, from_x, from_y, to_x, to_y)
+        tiles = []
+        for y in range(ymin, ymax+1):
+            for x in range(xmin, xmax+1):
+                if dfunc(x, y) < 0.5 and not (x == to_x and y == to_y):
+                    tiles.append(self.grid[y][x])
+
+        for t in tiles:
+            if t.layers & Layers.OBSTACLE:
+                return False
+
+        return True
+        """
         if from_x == to_x:
             ymin, ymax = sorted([from_y, to_y])
             tiles = [self.grid[y][to_x] for y in range(ymin + 1, ymax)]
@@ -62,12 +82,25 @@ class World:
             tiles = [self.grid[to_y][x] for x in range(xmin + 1, xmax)]
         else:
             k = (to_y - from_y) / (to_x - from_x)
+            q = -1 / k
+            d = distance(from_x, from_y, to_x, to_y)
+            for s in range(1, 4 * d):
+                s = s / 4.0
+                x = to_x + s
+                y = to_y + k * s
+        """
 
     def populate_world(self):
         for i in range(10):
-            self.random_tile(is_empty).add(Lamp(self))
-        for i in range(10):
-            self.random_tile(is_empty).add(Tree(self))
+            self.random_tile(Tile.is_empty).add(Lamp(self))
+        for i in range(30):
+            self.random_tile(Tile.is_empty).add(Tree(self))
+
+    @property
+    def player(self):
+        for x in self.objects:
+            if isinstance(x, Player):
+                return x
 
     def add(self, obj):
         self.objects[obj] = True
@@ -75,7 +108,7 @@ class World:
     def to_string(self):
         ret = []
         for i, row in enumerate(self.grid, 2):
-            rowstr = ''.join([x.chr for x in row])
+            rowstr = ''.join([x.chr if x.is_visible_for(self.player) else ' ' for x in row])
             ret.append(rowstr)
         return ret
 
@@ -174,6 +207,12 @@ class Tile:
         for light in LightSource.lights:
             if light.owner and light.lit and self.distance(light.owner) <= light._range:
                 return True
+
+    def is_visible_for(self, obj):
+        return self.world.line_of_sight(obj.x, obj.y, self.x, self.y)
+
+    def is_empty(self):
+        return self.features == []
 
     def has(self, cls):
         return cls in map(type, self.features)
