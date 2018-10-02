@@ -3,8 +3,10 @@ import random
 import math
 from curses import wrapper
 from functools import partial
-from utils import distance, distance_from_line, cross, tiles_on_route
-from utils import Point as P
+from utils import distance2, distance_from_line, cross, tiles_on_route
+from utils import BitMask
+import utils
+
 
 DIRS = {
     'h': (-1, 0),
@@ -52,26 +54,30 @@ class World:
 
     def generate_light_mask(self):
         if self.ambient:
-            return [[True] * self.width for y in range(self.height)]
+            return BitMask.ones(self.width, self.height)
         else:
-            mask = [[None] * self.width for y in range(self.height)]
+            mask = BitMask(self.width, self.height)
             for y in range(self.height):
                 for x in range(self.width):
                     if mask[y][x] is None:
                         for light in LightSource.lights:
-                            if distance(light.owner.pos, P(x, y)) <= light.range:
+                            if not light.lit:
+                                continue
+                            if distance2(light.owner.pos, (x, y)) <= light.range * light.range:
                                 mask[y][x] = True
                                 break
                         else:
                             mask[y][x] = False
             return mask
 
-    def generate_los_mask(self, viewpoint):
-        mask = [[None] * self.width for y in range(self.height)]
+    def generate_los_mask(self, viewpoint, mask=None):
+        if mask is None:
+            mask = BitMask.empty(self.width, self.height)
+
         for y in range(self.height):
             for x in range(self.width):
                 if mask[y][x] is None:
-                    tiles = tiles_on_route(viewpoint, P(x, y))
+                    tiles = tiles_on_route(viewpoint, (x, y))
                     while tiles:
                         tile = tiles.pop(0)
                         if mask[tile.y][tile.x] == False:
@@ -88,9 +94,9 @@ class World:
 
 
     def line_of_sight(self, p_from, p_to):
-        xmin, xmax = sorted([p_from.x, p_to.x])
-        ymin, ymax = sorted([p_from.y, p_to.y])
-        dfunc = partial(distance_from_line, p_from, p_to)
+        #xmin, xmax = sorted([p_from.x, p_to.x])
+        #ymin, ymax = sorted([p_from.y, p_to.y])
+        #dfunc = partial(distance_from_line, p_from, p_to)
         #tiles = tiles_on_route(p_from, p_to)
 
         #for t in tiles:
@@ -117,9 +123,14 @@ class World:
     def to_string(self):
         ret = []
         lightmask = self.generate_light_mask()
-        los_mask = self.generate_los_mask(self.player.pos)
+        los_mask = self.generate_los_mask(self.player.pos, lightmask)
+
+        chargrid = [[x.chr for x in row] for row in self.grid[2:]]
+        return [''.join(row) for row in chargrid]
+
         for i, row in enumerate(self.grid, 2):
-            rowstr = ''.join([x.chr if x.is_visible_for(self.player) else ' ' for x in row])
+            #rowstr = ''.join([x.chr if x.is_visible_for(self.player) else ' ' for x in row])
+            rowstr = ' ' * 80
             ret.append(rowstr)
         return ret
 
@@ -173,7 +184,7 @@ class Entity:
 
     @property
     def pos(self):
-        return P(self.x, self.y)
+        return (self.x, self.y)
 
 
 class LightSource:
@@ -223,7 +234,7 @@ class Tile:
         if self.world.ambient:
             return True
         for light in LightSource.lights:
-            if light.owner and light.lit and self.distance(light.owner) <= light._range:
+            if light.owner and light.lit and self.distance2(light.owner) <= light._range:
                 return True
 
     def is_visible_for(self, obj):
@@ -241,15 +252,16 @@ class Tile:
                 return c
         return None
 
-    def distance(self, other):
-        return distance(self.pos, other.pos)
+    def distance2(self, other):
+        return distance2(self.pos, other.pos)
 
     @property
     def pos(self):
-        return P(self.x, self.y)
+        return (self.x, self.y)
 
     @property
     def chr(self):
+        """
         if self.is_illuminated:
             if self.features:
                 return self.features[-1].chr
@@ -257,6 +269,11 @@ class Tile:
                 return self.feature_char
         else:
             return ' '
+        """
+        if self.features:
+            return self.features[-1].chr
+        else:
+            return self.feature_char
 
     def add(self, *objs):
         for obj in objs:
