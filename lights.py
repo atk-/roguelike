@@ -3,10 +3,8 @@ import random
 import math
 from curses import wrapper
 from functools import partial
-from utils import distance2, distance_from_line, cross, tiles_on_route
-from utils import BitMask
-import utils
-
+from utils import distance2, distance_from_line, cross, BitMask, \
+    tiles_on_route
 
 DIRS = {
     'h': (-1, 0),
@@ -56,6 +54,13 @@ class World:
         if self.ambient:
             return BitMask.ones(self.width, self.height)
         else:
+            mask = BitMask.zeros(self.width, self.height)
+
+            for light in LightSource.lights:
+                mask = mask | light.get_mask(self.width, self.height)
+
+            return mask
+            ###
             mask = BitMask(self.width, self.height)
             for y in range(self.height):
                 for x in range(self.width):
@@ -125,6 +130,7 @@ class World:
         lightmask = self.generate_light_mask()
         los_mask = self.generate_los_mask(self.player.pos, lightmask)
 
+        return los_mask.apply(self.grid)
         chargrid = [[x.chr for x in row] for row in self.grid[2:]]
         return [''.join(row) for row in chargrid]
 
@@ -190,18 +196,12 @@ class Entity:
 class LightSource:
     lights = []
 
-    def __init__(self, owner=None, lrange=0, **kwargs):
+    def __init__(self, owner, lrange, **kwargs):
         self._owner = owner
         self._range = lrange
         self._is_lit = kwargs.get('is_lit', False)
 
         self.__class__.lights.append(self)
-
-    @property
-    def position(self):
-        if self.owner:
-            return self.owner.y, self.owner.x
-        return None
 
     @property
     def range(self):
@@ -218,6 +218,18 @@ class LightSource:
     @lit.setter
     def lit(self, value):
         self._is_lit = value
+
+    def get_mask(self, width, height):
+        mask = BitMask.zeros(width, height)
+        if not self.lit:
+            return mask
+
+        # TODO this could be optimized to a square of 2 * range
+        for y, row in enumerate(mask):
+            for x, c in enumerate(row):
+                if distance2(self._owner.pos, (x, y)) <= (self._range * self._range):
+                    mask[y][x] = 1
+        return mask
 
 
 class Tile:
@@ -340,7 +352,7 @@ class Lamp(Entity):
 
     def __init__(self, world, y=None, x=None):
         super().__init__(world, y, x)
-        self.light = LightSource(self, 7)
+        self.light = LightSource(self, 5)
         self.light.lit = True
 
 
@@ -368,15 +380,6 @@ def main(stdscr):
             world.handle_control(key)
             player.handle_control(key)
 
-"""
-X = 33
-Y = 11
-world = World()
-player = Player(world, Y, X)
-world[Y][X].add(player)
-z = world.to_string()
-for x in z:
-    print(x)
-"""
 
-wrapper(main)
+if __name__ == '__main__':
+    wrapper(main)

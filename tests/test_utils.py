@@ -1,6 +1,7 @@
 import pytest
 from ..utils import distance, cross, distance_from_line, \
     tiles_on_route, BitMask
+from roguelike.lights import Tile, LightSource
 import math
 
 
@@ -31,3 +32,9 @@ def test_bitmask():
     mask2 = BitMask(3, 3, False)
     assert (mask1 | mask2).data == [[1, 1, 1], [1, 1, 1], [1, 1, 1]]
     assert (mask1 & mask2).data == [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+
+
+def test_light_source():
+    tile = Tile(None, 4, 3)
+    light = LightSource(owner=tile, lrange=3, is_lit=1)
+    print(light.get_mask(7, 7))

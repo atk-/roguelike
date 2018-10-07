@@ -98,6 +98,19 @@ class BitMask:
         else:
             return self.data[z[0]][z[1]]
 
+    def __str__(self):
+        return '\n'.join(
+            [''.join(
+                ['#' if c else '.' for c in row]
+            ) for row in self.data]
+        )
+
+    def apply(self, world):
+        assert len(world) == len(self.data)
+        assert len(world[0]) == len(self.data[0])
+        return [''.join([ch.chr if bit else ' ' for ch, bit in zip(wrow, lrow)])
+                for wrow, lrow in zip(world, self.data)]
+
     @classmethod
     def from_data(cls, data):
         return cls(data=data)
