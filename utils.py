@@ -3,6 +3,12 @@ from collections import namedtuple
 from functools import partial
 
 
+def sign(n):
+    if n == 0:
+        return 0
+    return int(n / abs(n))
+
+
 def distance(p1, p2=(0, 0)):
     """Compute Euclidian distance between two points."""
     return math.sqrt(distance2(p1, p2))
@@ -33,6 +39,27 @@ def qrange(a, b, step=1):
 
 
 def tiles_on_route(p1, p2):
+    dx = p2[0] - p1[0]
+    dy = p2[1] - p1[1]
+    if dx == 0:
+        if dy == 0:
+            return [p1]
+        return [(p1[0], y) for y in range(p1[1], p2[1] + sign(dy), sign(dy))][1:]
+    derr = abs(dy / dx)
+    error = 0.0
+    y = p1[1]
+
+    ret = []
+    for x in range(p1[0], p2[0] + sign(dx), sign(dx)):
+        ret.append((x, y))
+        error += derr
+        if error >= 0.5:
+            y += sign(dy)
+            error -= 1.0
+    return ret[1:]
+
+
+def _tiles_on_route(p1, p2):
     DELTAS = {
         -2: [(-1, 0), (0, -1)],
         -1: [(0, -1), (1, 0)],

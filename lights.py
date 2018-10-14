@@ -60,39 +60,25 @@ class World:
                 mask = mask | light.get_mask(self.width, self.height)
 
             return mask
-            ###
-            mask = BitMask(self.width, self.height)
-            for y in range(self.height):
-                for x in range(self.width):
-                    if mask[y][x] is None:
-                        for light in LightSource.lights:
-                            if not light.lit:
-                                continue
-                            if distance2(light.owner.pos, (x, y)) <= light.range * light.range:
-                                mask[y][x] = True
-                                break
-                        else:
-                            mask[y][x] = False
-            return mask
 
     def generate_los_mask(self, viewpoint, mask=None):
-        if mask is None:
-            mask = BitMask.empty(self.width, self.height)
+        mask = BitMask.empty(self.width, self.height)
 
         for y in range(self.height):
             for x in range(self.width):
                 if mask[y][x] is None:
                     tiles = tiles_on_route(viewpoint, (x, y))
                     while tiles:
-                        tile = tiles.pop(0)
+                        tx, ty = tiles.pop(0)
+                        tile = self[ty,tx]
                         if mask[tile.y][tile.x] == False:
-                            for t in tiles:
-                                mask[t.y][t.x] = False
+                            for dx, dy in tiles:
+                                mask[dy][dx] = False
                                 break
-                        if self[tile.y, tile.x].layers & Layers.OBSTACLE:
+                        if self[tile.y][tile.x].layers & Layers.OBSTACLE:
                             mask[tile.y][tile.x] = True
-                            for t in tiles:
-                                mask[t.y][t.x] = False
+                            for dx, dy in tiles:
+                                mask[dy][dx] = False
                                 break
                         mask[tile.y][tile.x] = True
         return mask
@@ -128,7 +114,8 @@ class World:
     def to_string(self):
         ret = []
         lightmask = self.generate_light_mask()
-        los_mask = self.generate_los_mask(self.player.pos, lightmask)
+        los_mask = lightmask & self.generate_los_mask(self.player.pos, lightmask)
+        print(str(los_mask), file=open('lights.data', 'w'))
 
         return los_mask.apply(self.grid)
         chargrid = [[x.chr for x in row] for row in self.grid[2:]]
@@ -220,6 +207,8 @@ class LightSource:
         self._is_lit = value
 
     def get_mask(self, width, height):
+        # TODO caching static lights would optimize somewhat, but invalidation
+        # needs to be taken into account
         mask = BitMask.zeros(width, height)
         if not self.lit:
             return mask
